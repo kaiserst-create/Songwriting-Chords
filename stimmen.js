@@ -182,6 +182,8 @@ var SC_STIMMEN = (function () {
   var el = {}, offen = false, fest = -1, gestimmt = {}, verlauf = [], imZiel = 0, refBis = 0, refText = '';
   var letzteAnalyse = 0, letzterTon = 0, zeigerIst = 0, zeigerSoll = 0, wach = null, refCache = {};
   var mic = null;     // { ctx, stream, analyser, buf, raf, startet }
+  var ktTon = null, ktTimer = 0;   // Kammerton zum Anhören (Dauerton aus SC.Klang)
+  var KT_DAUER = 60000;            // spätestens nach einer Minute hört er von selbst auf
   var CX = 130, CY = 130, R = 104, GRAD = 80;   // Skala: ±50 Cent über ±80 Grad
 
   function $(id) { return document.getElementById(id); }
@@ -238,6 +240,7 @@ var SC_STIMMEN = (function () {
     renderSaiten();
     anzeigen(null);
     knopf();
+    ktKnopf();
   }
   function renderKt() {
     var kt = A.S.kammerton;
@@ -280,7 +283,8 @@ var SC_STIMMEN = (function () {
       box.classList.add('still');
       zeigerSoll = 0;
       if (!mic) setzeZeiger(0);
-      if (fest >= 0 && s[fest]) zeigeTon(s[fest].name, s[fest].okt);
+      if (ktTon) zeigeTon('A', 4);
+      else if (fest >= 0 && s[fest]) zeigeTon(s[fest].name, s[fest].okt);
       else zeigeTon('');
       var t;
       if (refText) t = refText;
@@ -288,7 +292,7 @@ var SC_STIMMEN = (function () {
       else if (mic) t = 'Mikrofon startet …';
       else t = 'Starte unten das Mikrofon';
       el.status.textContent = t;
-      el.info.textContent = fest >= 0 && s[fest] ? 'Ziel ' + hz(frequenz(s[fest].midi, A.S.kammerton)) : '';
+      el.info.textContent = ktTon ? 'Stimm nach Gehör oder stell den Kammerton ein' : fest >= 0 && s[fest] ? 'Ziel ' + hz(frequenz(s[fest].midi, A.S.kammerton)) : '';
       markiereSaite(-1);
       return;
     }
@@ -388,6 +392,7 @@ var SC_STIMMEN = (function () {
   function referenz(i) {
     var s = saiten()[i], ctx = SC.Klang.kontext();
     if (!s || !ctx) return;
+    ktAus();
     var f = frequenz(s.midi, A.S.kammerton), k = f.toFixed(3) + '@' + ctx.sampleRate;
     if (!refCache[k]) {
       var d = zupfDaten(f, ctx.sampleRate, 3), b = ctx.createBuffer(1, d.length, ctx.sampleRate);
@@ -400,6 +405,48 @@ var SC_STIMMEN = (function () {
     refText = 'Referenzton ' + s.name + s.okt + ' · ' + hz(f);
     anzeigen(null);
     setTimeout(function () { if (performance.now() >= refBis && refText) { refText = ''; if (offen) anzeigen(null); } }, 3050);
+  }
+
+  // ---------------------------------------------------- Kammerton anhören
+  // Dauerton auf A4 wie eine Stimmgabel. Er folgt dem Regler, solange er spielt. Das Stimmgerät
+  // hört währenddessen nicht zu, sonst würde es den eigenen Ton messen.
+  var ICON_PLAY = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4.5v15l12.5-7.5z"/></svg>';
+  var ICON_STOPP = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="1.5"/></svg>';
+  function ktKnopf() {
+    var an = !!ktTon;
+    el.ktSpielen.innerHTML = an ? ICON_STOPP + 'Stopp' : ICON_PLAY + 'Anhören';
+    el.ktSpielen.setAttribute('aria-pressed', String(an));
+    el.ktSpielen.setAttribute('aria-label', an ? 'Kammerton stoppen' : 'Kammerton A4 anhören');
+  }
+  function ktText() { refText = 'Kammerton A4 · ' + A.S.kammerton + ' Hz'; }
+  function ktSpielen() {
+    if (ktTon) { ktStopp(); return; }
+    SC.Klang.stopp();   // laufenden Referenzton beenden
+    var ton = SC.Klang.dauerton(A.S.kammerton, 0.3, function () { if (ktTon === ton) ktFertig(); });
+    if (!ton) return;
+    ktTon = ton;
+    ktTimer = setTimeout(ktStopp, KT_DAUER);
+    refBis = Infinity; verlauf = []; letzterTon = 0; imZiel = 0;
+    ktText(); ktKnopf(); anzeigen(null);
+  }
+  function ktAus() {   // nur den Zustand zurücksetzen, den Klang beendet der Aufrufer
+    clearTimeout(ktTimer);
+    if (!ktTon) return;
+    ktTon = null;
+    refText = ''; refBis = 0;
+    if (el.ktSpielen) ktKnopf();
+  }
+  function ktStopp() {
+    if (!ktTon) return;
+    var ton = ktTon;
+    ktAus();
+    ton.stopp();
+    refBis = performance.now() + 300;   // kurz warten, bis er verklungen ist
+    if (offen) anzeigen(null);
+  }
+  function ktFertig() {   // von außen beendet, zum Beispiel weil die App in den Hintergrund ging
+    ktAus();
+    if (offen) anzeigen(null);
   }
 
   // ---------------------------------------------------- Öffnen und Schließen
@@ -427,6 +474,7 @@ var SC_STIMMEN = (function () {
   }
   function schliessen() {
     mikroStopp();
+    ktAus();
     SC.Klang.stopp();
     refCache = {};   // Referenztöne nur behalten, solange das Fenster offen ist
     offen = false;
@@ -454,6 +502,7 @@ var SC_STIMMEN = (function () {
     refCache = {};
     A.speichern();
     gestimmt = {}; verlauf = [];
+    if (ktTon) { ktTon.frequenz(v); ktText(); }   // spielt er gerade, hört man die Änderung sofort
     renderKt(); renderSaiten(); anzeigen(null);
   }
 
@@ -470,7 +519,7 @@ var SC_STIMMEN = (function () {
       fenster: $('stimmgeraet'), zurueck: $('sg-zurueck'), inst: $('sg-inst'), stimmungFeld: $('sg-stimmung-feld'), stimmung: $('sg-stimmung'),
       kt: $('sg-kt'), ktWert: $('sg-kt-wert'), ktReset: $('sg-kt-reset'), anzeige: $('sg-anzeige'), skala: $('sg-skala'),
       ton: $('sg-ton'), status: $('sg-status'), info: $('sg-info'), pegel: $('sg-pegel'), saitenFeld: $('sg-saiten-feld'), saiten: $('sg-saiten'),
-      mikro: $('sg-mikro'), hinweis: $('sg-hinweis'),
+      mikro: $('sg-mikro'), hinweis: $('sg-hinweis'), ktSpielen: $('sg-kt-spielen'),
     };
     skala();
     $('stimmen-knopf').onclick = oeffnen;
@@ -488,6 +537,7 @@ var SC_STIMMEN = (function () {
     $('sg-kt-minus').onclick = function () { setzeKt(S.kammerton - 1); };
     $('sg-kt-plus').onclick = function () { setzeKt(S.kammerton + 1); };
     el.ktReset.onclick = function () { setzeKt(KT_STANDARD); };
+    el.ktSpielen.onclick = ktSpielen;
     el.saiten.addEventListener('click', function (e) {
       var b = e.target.closest('[data-saite]');
       if (!b) return;
@@ -495,14 +545,15 @@ var SC_STIMMEN = (function () {
       fest = i; verlauf = []; imZiel = 0;
       renderSaiten();
       if (i >= 0) referenz(i);
-      else { refText = ''; refBis = 0; SC.Klang.stopp(); anzeigen(null); }
+      else { ktAus(); refText = ''; refBis = 0; SC.Klang.stopp(); anzeigen(null); }
     });
     el.mikro.onclick = function () { if (mic) mikroStopp(); else mikroStart(); };
     document.addEventListener('keydown', function (e) { if (offen && e.key === 'Escape') zurueck(); });
     document.addEventListener('visibilitychange', function () {
+      if (document.hidden) ktStopp();
       if (document.hidden && mic) mikroStopp('Pausiert, weil die App im Hintergrund war. Tippe auf „Mikrofon starten“.');
     });
-    window.addEventListener('pagehide', function () { if (mic) mikroStopp(); });
+    window.addEventListener('pagehide', function () { ktStopp(); if (mic) mikroStopp(); });
   }
 
   return {

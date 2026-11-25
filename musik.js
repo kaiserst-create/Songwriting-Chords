@@ -774,11 +774,44 @@ var SC = (function () {
       src.onended = function () { var x = aktiv.indexOf(src); if (x >= 0) aktiv.splice(x, 1); };
       return src;
     }
+    // Dauerton wie eine Stimmgabel (Kammerton im Stimmgerät): fast reiner Sinus, etwas Oberton,
+    // damit er auch aus kleinen Lautsprechern klingt. Läuft, bis stopp() kommt; stopp() und ruhe()
+    // der Klangausgabe beenden ihn ebenfalls, dann meldet er sich über fertig().
+    function dauerton(hz, laut, fertig) {
+      if (!init()) return null;
+      var t = ctx.currentTime, osc = ctx.createOscillator(), g = ctx.createGain(), aus = false;
+      osc.setPeriodicWave(ctx.createPeriodicWave(new Float32Array([0, 0, 0, 0]), new Float32Array([0, 1, 0.12, 0.03])));
+      osc.frequency.value = hz;
+      g.gain.setValueAtTime(0, t);
+      g.gain.linearRampToValueAtTime(laut || 0.3, t + 0.05);   // weich einsetzen, ohne Knacken
+      osc.connect(g); g.connect(master);
+      osc.start(t);
+      aktiv.push(osc);
+      osc.onended = function () {
+        aus = true;
+        var x = aktiv.indexOf(osc); if (x >= 0) aktiv.splice(x, 1);
+        osc.disconnect(); g.disconnect();
+        if (fertig) fertig();
+      };
+      return {
+        frequenz: function (f) { if (!aus) osc.frequency.setTargetAtTime(f, ctx.currentTime, 0.015); },
+        jetzt: function () { return osc.frequency.value; },
+        stopp: function () {
+          if (aus) return;
+          aus = true;
+          var n = ctx.currentTime;
+          g.gain.cancelScheduledValues(n);
+          g.gain.setValueAtTime(g.gain.value, n);
+          g.gain.linearRampToValueAtTime(0, n + 0.12);   // weich ausklingen
+          try { osc.stop(n + 0.13); } catch (e) { /* schon beendet */ }
+        },
+      };
+    }
     function kontext() { return init() ? ctx : null; }
     // Kammerton A4 in Hz, gilt für alle Klänge der App
     function kammerton(hz) { if (hz !== kt) { kt = hz; cache = {}; } }   // alte Klänge passen nicht mehr
     function puffer_anzahl() { return Object.keys(cache).length; }
-    return { init: init, anschlag: anschlag, stopp: stopp, zeit: zeit, spiele: spiele, kontext: kontext, kammerton: kammerton, sitzung: sitzung,
+    return { init: init, anschlag: anschlag, stopp: stopp, zeit: zeit, spiele: spiele, dauerton: dauerton, kontext: kontext, kammerton: kammerton, sitzung: sitzung,
       ruhe: ruhe, zustand: zustand, _pufferAnzahl: puffer_anzahl };
   })();
 

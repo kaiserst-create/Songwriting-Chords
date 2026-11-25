@@ -3,9 +3,9 @@
 // und holt im Hintergrund neue Fassungen, die beim nächsten Start aktiv sind.
 // Nach größeren Änderungen VERSION erhöhen, dann wird der alte Speicher gelöscht.
 
-var VERSION = 'sc-2026-11-25-7';
+var VERSION = 'sc-2026-11-25-10';
 var DATEIEN = [
-  './', 'index.html', 'style.css', 'daten.js', 'musik.js', 'folgen.js', 'stimmen.js', 'app.js', 'manifest.webmanifest',
+  './', 'index.html', 'style.css', 'daten.js', 'musik.js', 'folgen.js', 'stimmen.js', 'installieren.js', 'app.js', 'manifest.webmanifest',
   'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-512.png', 'icons/apple-touch-icon.png',
 ];
 

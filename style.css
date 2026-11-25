@@ -116,7 +116,7 @@ main { max-width: 1320px; margin: 0 auto; padding: 16px 20px 24px; }
 .filter { display: flex; flex-wrap: wrap; gap: 12px 16px; padding: 14px 16px; align-items: flex-end; }
 .filter.innen { padding: 12px 0 4px; }
 .feld { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
-.feld > span { font-size: .75rem; font-weight: 650; text-transform: uppercase; letter-spacing: .05em; color: var(--leise); }
+.feld > span, .sg-kt-kopf > span { font-size: .75rem; font-weight: 650; text-transform: uppercase; letter-spacing: .05em; color: var(--leise); }
 .feld.breit { flex: 1 1 260px; }
 select, input[type="search"] {
   appearance: none; -webkit-appearance: none;
@@ -311,6 +311,33 @@ input[type="search"] { width: 100%; }
 
 .fuss { max-width: 1320px; margin: 0 auto; padding: 8px 20px 32px; color: var(--leise); font-size: .82rem; }
 .fuss p { margin: 2px 0; }
+#install-zeile { margin-top: 8px; }
+#install-zeile .link-knopf { font-size: .88rem; }
+
+/* ------------------------------------------------ Hinweis zum Installieren */
+html.ih-offen body { padding-bottom: calc(var(--ih-hoehe, 0px) + env(safe-area-inset-bottom)); }
+.install-hinweis {
+  position: fixed; z-index: 40; left: 0; right: 0; margin: 0 auto;
+  bottom: calc(12px + env(safe-area-inset-bottom));
+  width: min(520px, calc(100% - 24px - env(safe-area-inset-left) - env(safe-area-inset-right)));
+  display: flex; gap: 12px; align-items: flex-start;
+  background: var(--flaeche); border: 1px solid var(--akzent-rand); border-radius: 18px; padding: 14px 12px 14px 14px;
+  box-shadow: 0 2px 6px rgba(20, 20, 30, .08), 0 12px 32px rgba(20, 20, 30, .16);
+  opacity: 0; transform: translateY(16px); transition: opacity .25s ease, transform .25s ease;
+}
+.install-hinweis.da { opacity: 1; transform: none; }
+.ih-icon { width: 44px; height: 44px; border-radius: 10px; flex: none; }
+.ih-text { flex: 1; min-width: 0; display: grid; gap: 6px; font-size: .92rem; }
+.ih-text h2 { font-size: 1rem; }
+.ih-text p { margin: 0; }
+.ih-text ol { margin: 2px 0 0; padding-left: 20px; display: grid; gap: 4px; }
+.ih-text b { font-weight: 650; }
+.ih-text .knopf { justify-self: start; margin-top: 4px; }
+.ih-symbol { width: 18px; height: 18px; vertical-align: -3px; fill: none; stroke: var(--akzent); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.ih-zu { width: 32px; height: 32px; flex: none; margin: -4px -2px 0 0; font-size: 1.3rem; line-height: 1; color: var(--leise); }
+@media (max-width: 400px) { .ih-icon { display: none; } }
+html.sg-offen .install-hinweis { display: none; }
+@media (prefers-reduced-motion: reduce) { .install-hinweis { transition: none; transform: none; } }
 
 /* ------------------------------------------------ Stimmgerät */
 html.sg-offen, html.sg-offen body { overflow: hidden; }
@@ -318,14 +345,19 @@ html.sg-offen, html.sg-offen body { overflow: hidden; }
   position: fixed; inset: 0; z-index: 50; background: var(--bg); overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain;
   padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
 }
-.vollbild-innen { max-width: 600px; margin: 0 auto; padding: 10px 20px 32px; display: grid; gap: 16px; }
+.vollbild-innen { max-width: 600px; margin: 0 auto; padding: 10px 20px 32px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
 .vollbild .ansicht-kopf { margin: 0; }
 .sg-inst { justify-self: start; }
 .sg-zeile { display: flex; flex-wrap: wrap; gap: 12px 18px; align-items: flex-end; }
 .sg-zeile .feld { flex: 1 1 220px; }
 .sg-zeile select { width: 100%; }
+.sg-zeile .sg-kt-feld { flex-basis: 340px; }   /* lieber eigene Zeile als ein winziger Regler */
+.sg-kt .mini { white-space: nowrap; }
+.sg-kt-kopf { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.sg-kt-kopf .knopf { padding: 4px 12px; }
+.sg-kt-kopf .knopf[aria-pressed="true"] { background: var(--akzent); color: var(--akzent-text); }
 .sg-kt { display: flex; align-items: center; gap: 8px; min-height: 38px; }
-.sg-kt input[type="range"] { flex: 1; min-width: 60px; accent-color: var(--akzent); }
+.sg-kt input[type="range"] { flex: 1; width: 0; min-width: 60px; accent-color: var(--akzent); }
 .sg-kt output { font-weight: 700; min-width: 58px; text-align: center; font-variant-numeric: tabular-nums; }
 .icon-knopf.klein { width: 34px; height: 34px; flex: none; font-size: 1.15rem; font-weight: 700; line-height: 1; color: var(--text); }
 .sg-anzeige { padding: 14px 16px 18px; display: grid; justify-items: center; gap: 8px; text-align: center; }
@@ -399,8 +431,9 @@ html.sg-offen, html.sg-offen body { overflow: hidden; }
 @media (max-width: 359px) {
   .filter .feld:has(> .segment) { flex-basis: 100%; }
   .segment.klein button { padding: 6px 8px; font-size: .86rem; }
+  .sg-kt { gap: 6px; }
 }
 @media print {
-  .kopf-rechts, .tabs, .filter, .ansicht-kopf, .spieler, .griff-nav, .fuss, .detail-wahl, .vollbild { display: none !important; }
+  .kopf-rechts, .tabs, .filter, .ansicht-kopf, .spieler, .griff-nav, .fuss, .detail-wahl, .vollbild, .install-hinweis { display: none !important; }
   .detail { position: static; box-shadow: none; border: 0; }
 }

@@ -17,6 +17,7 @@
     tGrundton: 0, tGeschlecht: 'dur', tArt: 'drei', tKapo: 0, tKatAus: {}, tAus: {},
     aGrundton: 0, aTyp: '', aKatAus: {}, alt: {},
     stInst: 'gitarre', stGit: 'standard', stUke: 'standard', kammerton: 440,
+    installZu: false,   // Hinweis zum Installieren geschlossen
   };
   try {
     var gespeichert = JSON.parse(localStorage.getItem('sc-zustand') || '{}');
@@ -239,6 +240,7 @@
   function nachFilter() { stoppen(); speichern(); renderFolgen(); }
 
   var AKKORD_RE = /^[A-H](#|♭|b)?(m|maj7|7|m7|6|m6|9|m9|sus2|sus4|add9|°7?|\+|5|m7♭5|7#9|7♭9)?(\/[A-H](#|♭|b)?)?$/;
+  var DEUTSCH_RE = /^[A-Ha-h](is|es|s(?!us))|^[A-Ha-h](is|es|s)?-?(moll|dur)$/i;   // deutsche Tonnamen in der Suche
   function normSuche(t) {
     t = t.replace(/^([A-H])b/, '$1♭').replace(/\/([A-H])b/, '/$1♭');
     if (/^B(?!♭)/.test(t)) t = 'B♭' + t.slice(1);   // deutsches B = B♭
@@ -260,6 +262,8 @@
         f.genres.map(genreName).join(' '), f.stimmung.map(stimmungName).join(' ')].join(' ').toLowerCase();
       return woerter.every(function (w) {
         if (AKKORD_RE.test(w)) return akk.indexOf(normSuche(w)) >= 0;
+        var de = DEUTSCH_RE.test(w) ? normAkkordEingabe(w) : null;   // Fis, Es, Cis7, h-moll …
+        if (de && AKKORD_RE.test(de)) return akk.indexOf(de) >= 0;
         return text.indexOf(w.toLowerCase()) >= 0;
       });
     });
@@ -351,7 +355,9 @@
     r.onload = function () {
       var neu = 0, doppelt = 0, fehler = 0, daten;
       try { daten = JSON.parse(r.result); } catch (e) { daten = null; }
-      if (!daten || typeof daten !== 'object') { alert('Die Datei ist keine gültige Export-Datei.'); return; }
+      if (!daten || typeof daten !== 'object' || Array.isArray(daten) || (!Array.isArray(daten.eigene) && !Array.isArray(daten.favoriten))) {
+        alert('Die Datei ist keine gültige Export-Datei.'); return;
+      }
       (Array.isArray(daten.eigene) ? daten.eigene : []).forEach(function (f) {
         var p = pruefeFolge(f);
         if (!p) { fehler++; return; }
@@ -862,6 +868,7 @@
   if (S.stimmung && !F.stimmungen.some(function (s) { return s.id === S.stimmung; })) S.stimmung = '';
   try { history.replaceState(null, ''); } catch (e) { /* egal */ }
   SC_STIMMEN.einrichten({ S: S, speichern: speichern, vorher: stoppen });
+  SC_INSTALL.einrichten({ S: S, speichern: speichern });
   initFolgenFilter();
   initTonartFilter();
   alles();
