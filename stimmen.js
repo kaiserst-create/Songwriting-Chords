@@ -217,11 +217,30 @@ var SC_STIMMEN = (function () {
     h += '<circle class="sg-nabe" cx="' + CX + '" cy="' + CY + '" r="7"/>';
     el.skala.innerHTML = h;
     el.nadel = $('sg-nadel');
+    zeigerGemalt = '';
   }
-  function setzeZeiger(grad) { zeigerIst = grad; el.nadel.setAttribute('transform', 'rotate(' + grad.toFixed(2) + ' ' + CX + ' ' + CY + ')'); }
-  function gleiten() {
-    var d = zeigerSoll - zeigerIst;
-    if (Math.abs(d) > 0.05) setzeZeiger(zeigerIst + d * 0.28);
+  // Zeiger wie bei einem echten Messgerät: eine kritisch gedämpfte Feder. Er beschleunigt und bremst
+  // weich, schwingt nicht über und schluckt das Zittern der Messung. Gerechnet wird mit der echten Zeit,
+  // damit er auf 60- und 120-Hz-Bildschirmen (iPhone Pro, iPad Pro) gleich schnell ist.
+  var FEDER = 9;   // Eigenfrequenz in 1/s: kleiner = träger, größer = flinker
+  var zeigerV = 0, zeigerZeit = 0, zeigerGemalt = '';
+  function setzeZeiger(grad) {
+    zeigerIst = grad;
+    var t = grad.toFixed(2);
+    if (t === zeigerGemalt) return;   // nichts geändert, nichts zeichnen
+    zeigerGemalt = t;
+    el.nadel.setAttribute('transform', 'rotate(' + t + ' ' + CX + ' ' + CY + ')');
+  }
+  function zeigerHalt(grad) { zeigerV = 0; zeigerZeit = 0; setzeZeiger(grad); }
+  function gleiten(jetzt) {
+    var dt = zeigerZeit ? Math.min(0.1, (jetzt - zeigerZeit) / 1000) : 0;
+    zeigerZeit = jetzt;
+    if (!dt || (zeigerIst === zeigerSoll && !zeigerV)) return;
+    var n = Math.ceil(dt / 0.008), h = dt / n, x = zeigerIst, v = zeigerV;
+    for (var i = 0; i < n; i++) { v += (FEDER * FEDER * (zeigerSoll - x) - 2 * FEDER * v) * h; x += v * h; }
+    if (Math.abs(zeigerSoll - x) < 0.02 && Math.abs(v) < 0.1) { x = zeigerSoll; v = 0; }   // angekommen
+    zeigerV = v;
+    setzeZeiger(x);
   }
 
   // ---------------------------------------------------- Aufbau
@@ -282,7 +301,7 @@ var SC_STIMMEN = (function () {
       box.classList.remove('gut', 'daneben');
       box.classList.add('still');
       zeigerSoll = 0;
-      if (!mic) setzeZeiger(0);
+      if (!mic) zeigerHalt(0);
       if (ktTon) zeigeTon('A', 4);
       else if (fest >= 0 && s[fest]) zeigeTon(s[fest].name, s[fest].okt);
       else zeigeTon('');
@@ -296,7 +315,8 @@ var SC_STIMMEN = (function () {
       markiereSaite(-1);
       return;
     }
-    var c = w.cent, ac = Math.abs(c), gut = ac <= 3;
+    // grün ab 3 Cent, erst ab 4 Cent wieder orange: kein Flackern an der Grenze
+    var c = w.cent, ac = Math.abs(c), gut = ac <= 3 || (box.classList.contains('gut') && ac <= 4);
     box.classList.remove('still');
     box.classList.toggle('gut', gut);
     box.classList.toggle('daneben', !gut);
@@ -385,7 +405,7 @@ var SC_STIMMEN = (function () {
         } else if (letzterTon && jetzt - letzterTon > 1200) { letzterTon = 0; verlauf = []; imZiel = 0; anzeigen(null); }
       }
     }
-    gleiten();
+    gleiten(jetzt);
   }
 
   // ---------------------------------------------------- Referenzton
