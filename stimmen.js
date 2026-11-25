@@ -222,7 +222,7 @@ var SC_STIMMEN = (function () {
   // Zeiger wie bei einem echten Messgerät: eine kritisch gedämpfte Feder. Er beschleunigt und bremst
   // weich, schwingt nicht über und schluckt das Zittern der Messung. Gerechnet wird mit der echten Zeit,
   // damit er auf 60- und 120-Hz-Bildschirmen (iPhone Pro, iPad Pro) gleich schnell ist.
-  var FEDER = 8;   // Eigenfrequenz in 1/s: kleiner = träger, größer = flinker
+  var FEDER = 7;   // Eigenfrequenz in 1/s: kleiner = träger, größer = flinker
   var zeigerV = 0, zeigerZeit = 0, zeigerGemalt = '';
   function setzeZeiger(grad) {
     zeigerIst = grad;
