@@ -502,7 +502,7 @@
   function spielSequenz(griffe, takt, kapo) {
     if (!SC.Klang.init()) { alert('Dein Browser kann leider keinen Ton abspielen.'); return; }
     var inst = S.instrument, laut = takt === 4 ? [1, 0.5, 0.8, 0.5] : [1, 0.6];
-    spiel.an = true; spiel.i = 0;
+    spiel.an = true; spiel.i = 0; spiel.vorher = null;
     var knopf = $('#abspielen');
     if (knopf) knopf.innerHTML = ICON_STOP + 'Stopp';
     (function tick() {
@@ -512,6 +512,8 @@
         spiel.i = 0;
       }
       var schlag = 60 / S.tempo, t0 = SC.Klang.zeit() + 0.04, v = griffe[spiel.i];
+      if (v && spiel.vorher && SC.fs(v.f) !== SC.fs(spiel.vorher.f)) SC.Klang.daempfen(t0);   // neuer Akkord: alter verklingt
+      spiel.vorher = v;
       if (v) for (var b = 0; b < takt; b++) SC.Klang.anschlag(v.f, inst, kapo, t0 + b * schlag, laut[b], b === 3);
       markiere(spiel.i);
       spiel.i++;

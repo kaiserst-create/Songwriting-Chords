@@ -682,6 +682,10 @@ var SC = (function () {
     var ctx = null, master = null, cache = {}, aktiv = [], kt = 440, sitzungTyp = 'playback', ruheTimer = null;
     var MAX_PUFFER = 32;   // höchstens so viele fertige Saitenklänge behalten (je 0,3 bis 0,6 MB)
     var RUHE_NACH = 20000; // so lange nach dem letzten Ton schaltet sich die Klangausgabe ab
+    var saite = {};        // letzter Ton je Saite: wird die Saite neu angeschlagen, verklingt er
+    // Nachklang in Sekunden, bis ein Ton um 60 dB leiser ist. Gleich für tiefe und hohe Saiten,
+    // damit die Basssaiten nicht lange nachdröhnen (klang sonst wie Hall).
+    var NACHKLANG = { gitarre: 2.6, ukulele: 1.4 };
     // iPhone/iPad: 'playback' spielt auch bei eingeschaltetem Stummschalter (Safari 17+),
     // das Stimmgerät schaltet für das Mikrofon auf 'play-and-record'
     function sitzung(typ) {
@@ -698,6 +702,8 @@ var SC = (function () {
         master = ctx.createGain();
         master.gain.value = 0.55;
         var comp = ctx.createDynamicsCompressor();
+        // sanft: fängt nur Spitzen ab und hebt das Ausklingen nicht an
+        comp.threshold.value = -16; comp.knee.value = 12; comp.ratio.value = 4; comp.attack.value = 0.003; comp.release.value = 0.15;
         master.connect(comp);
         comp.connect(ctx.destination);
       }
@@ -727,40 +733,62 @@ var SC = (function () {
       var alt = Object.keys(cache);
       if (alt.length >= MAX_PUFFER) delete cache[alt[0]];  // den am längsten unbenutzten Klang vergessen
       var sr = ctx.sampleRate, freq = kt * Math.pow(2, (midi - 69) / 12);
-      var dauer = inst === 'ukulele' ? 1.8 : 3.2;
+      var dauer = NACHKLANG[inst] * 0.9;
       var len = Math.floor(sr * dauer), buf = ctx.createBuffer(1, len, sr), d = buf.getChannelData(0);
       var N = Math.max(2, Math.round(sr / freq)), ring = new Float32Array(N), prev = 0;
       for (var i = 0; i < N; i++) { var r = Math.random() * 2 - 1; prev = 0.6 * r + 0.4 * prev; ring[i] = prev; }
-      var decay = inst === 'ukulele' ? 0.9955 : 0.9975, idx = 0;
+      var decay = Math.min(inst === 'ukulele' ? 0.9955 : 0.9975, Math.pow(10, -3 / (NACHKLANG[inst] * freq))), idx = 0;
       for (var j = 0; j < len; j++) {
         var nx = idx + 1 === N ? 0 : idx + 1, v = ring[idx];
         d[j] = v;
         ring[idx] = decay * 0.5 * (v + ring[nx]);
         idx = nx;
       }
-      var fade = Math.floor(sr * 0.05);
+      var fade = Math.floor(sr * (inst === 'ukulele' ? 0.2 : 0.3));
       for (var q = 0; q < fade; q++) d[len - 1 - q] *= q / fade;
       return (cache[k] = buf);
     }
+    // Saiten anschlagen. frets: ein Wert je Saite, null = diese Saite nicht spielen.
+    // aufwaerts: von der hohen zur tiefen Saite (Aufschlag).
     function anschlag(frets, inst, kapo, wann, laut, aufwaerts) {
       if (!init()) return;
       var t0 = wann || ctx.currentTime + 0.02;
       var noten = [];
-      frets.forEach(function (f, i) { if (f !== null) noten.push(MIDI[inst][i] + f + (kapo || 0)); });
+      frets.forEach(function (f, i) { if (f !== null) noten.push({ s: i, m: MIDI[inst][i] + f + (kapo || 0) }); });
       if (aufwaerts) noten.reverse();
-      noten.forEach(function (m, i) {
-        var src = ctx.createBufferSource(), g = ctx.createGain();
-        src.buffer = puffer(m, inst);
+      noten.forEach(function (n, i) {
+        var src = ctx.createBufferSource(), g = ctx.createGain(), t = t0 + i * (inst === 'ukulele' ? 0.018 : 0.024);
+        src.buffer = puffer(n.m, inst);
         g.gain.value = (laut || 1) * (inst === 'ukulele' ? 0.32 : 0.26);
         src.connect(g); g.connect(master);
-        src.start(t0 + i * (inst === 'ukulele' ? 0.018 : 0.024));
+        src.start(t);
+        // die Saite klingt nur einmal: der vorige Ton auf ihr verklingt, sobald der neue kommt
+        var k = inst + n.s, vor = saite[k];
+        if (vor && vor.t < t) {
+          try { vor.g.gain.setTargetAtTime(0, t, 0.012); vor.src.stop(t + 0.12); } catch (e) { /* schon vorbei */ }
+        }
+        saite[k] = { src: src, g: g, t: t };
         aktiv.push(src);
-        src.onended = function () { var x = aktiv.indexOf(src); if (x >= 0) aktiv.splice(x, 1); };
+        src.onended = function () {
+          var x = aktiv.indexOf(src); if (x >= 0) aktiv.splice(x, 1);
+          if (saite[k] && saite[k].src === src) delete saite[k];
+        };
+      });
+    }
+    // Akkordwechsel: die Greifhand löst den alten Akkord, alle Saiten verklingen kurz vor dem neuen
+    function daempfen(wann) {
+      if (!ctx) return;
+      Object.keys(saite).forEach(function (k) {
+        var v = saite[k];
+        if (v.t >= wann) return;
+        try { v.g.gain.setTargetAtTime(0, wann, 0.025); v.src.stop(wann + 0.25); } catch (e) { /* schon vorbei */ }
+        delete saite[k];
       });
     }
     function stopp() {
       aktiv.slice().forEach(function (s) { try { s.stop(); } catch (e) { /* schon beendet */ } });
       aktiv = [];
+      saite = {};
     }
     function zeit() { return ctx ? ctx.currentTime : 0; }
     // fertigen Puffer abspielen (Referenzton des Stimmgeräts), gibt die Quelle zurück
@@ -811,7 +839,7 @@ var SC = (function () {
     // Kammerton A4 in Hz, gilt für alle Klänge der App
     function kammerton(hz) { if (hz !== kt) { kt = hz; cache = {}; } }   // alte Klänge passen nicht mehr
     function puffer_anzahl() { return Object.keys(cache).length; }
-    return { init: init, anschlag: anschlag, stopp: stopp, zeit: zeit, spiele: spiele, dauerton: dauerton, kontext: kontext, kammerton: kammerton, sitzung: sitzung,
+    return { init: init, anschlag: anschlag, daempfen: daempfen, stopp: stopp, zeit: zeit, spiele: spiele, dauerton: dauerton, kontext: kontext, kammerton: kammerton, sitzung: sitzung,
       ruhe: ruhe, zustand: zustand, _pufferAnzahl: puffer_anzahl };
   })();
 
